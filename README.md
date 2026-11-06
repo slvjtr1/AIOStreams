@@ -1,3 +1,16 @@
+> [!NOTE]
+> **This fork packages the AIOStreams LG TV app for TVs from 2022 and newer (webOS 22+)**, where the
+> official package needs 2023 or newer. It is the official TV app with a lower build target, polyfills
+> and CSS fallbacks for webOS 22's engine (Chromium 87); playback, subtitles and server sign-in are
+> unchanged. Releases follow the official TV releases.
+>
+> **Install with the Homebrew Channel:** add `https://slvjtr1.github.io/AIOStreams/apps.json` as a
+> repository in its settings, then install AIOStreams from it. Updates arrive the same way. Without
+> the Homebrew Channel, install the `.ipk` from the
+> [latest release](https://github.com/slvjtr1/AIOStreams/releases/latest) with
+> [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop) in Developer Mode.
+> See [packages/smart-tv](packages/smart-tv/README.md) for details.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/gh/selfhst/icons/png/aiostreams-light.png">

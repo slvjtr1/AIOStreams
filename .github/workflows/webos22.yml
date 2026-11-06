@@ -1,0 +1,148 @@
+name: webOS 22 Release
+
+# Follows the official TV releases (smart-tv-v* tags upstream): merges the
+# newest one with this branch, builds the webOS package, checks that it starts
+# in Chromium 87 (the engine of webOS 22) and publishes it with the Homebrew
+# Channel repository. A failed step publishes nothing. The merge stays in the
+# runner, as the workflow token can't push upstream's workflow changes; each
+# release names the official tag it was built from.
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: webos22-release
+
+env:
+  UPSTREAM: https://github.com/Viren070/AIOStreams.git
+  BRANCH: webos22
+  FEED: https://slvjtr1.github.io/AIOStreams/apps.json
+  # Chromium 87.0.4280, as on webOS 22.
+  CHROMIUM: https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/812830/chrome-linux.zip
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Merge the latest official TV release
+        id: merge
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --quiet --no-tags "$UPSTREAM" '+refs/tags/smart-tv-v*:refs/tags/smart-tv-v*'
+          latest=$(git tag -l 'smart-tv-v*' | sort -V | tail -1)
+          echo "upstream=$latest" >>"$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$latest" HEAD; then
+            echo "$latest is already merged"
+            exit 0
+          fi
+          if ! git merge --no-edit -m "Merge $latest" "$latest"; then
+            # Only the lockfile is expected to clash: it is rebuilt from theirs.
+            if [ "$(git diff --name-only --diff-filter=U)" != "pnpm-lock.yaml" ]; then
+              git diff --name-only --diff-filter=U
+              echo "::error::$latest conflicts with this branch; merge it by hand"
+              exit 1
+            fi
+            git checkout --theirs pnpm-lock.yaml
+            pnpm install --lockfile-only
+            git add pnpm-lock.yaml
+            git commit --no-edit
+          fi
+          echo "merged=true" >>"$GITHUB_OUTPUT"
+
+      - name: Version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(jq -r .version packages/smart-tv/package.json)
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "tag=webos22-v$version" >>"$GITHUB_OUTPUT"
+          if gh release view "webos22-v$version" >/dev/null 2>&1; then
+            echo "webos22-v$version is already released"
+          else
+            echo "build=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.version.outputs.build
+        run: |
+          pnpm install --frozen-lockfile --filter "@aiostreams/web..." --filter @aiostreams/smart-tv
+          pnpm -F @aiostreams/smart-tv build:webos
+          mv packages/smart-tv/out/*.ipk "aiostreams-webos-${{ steps.version.outputs.version }}.ipk"
+
+      - name: Check that it starts on webOS 22's engine
+        if: steps.version.outputs.build
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke"
+          curl -fsSL -o chrome.zip "$CHROMIUM" && unzip -q chrome.zip
+          npm install --silent --no-save puppeteer-core@10.4.0
+          NODE_PATH="$PWD/node_modules" node "$GITHUB_WORKSPACE/packages/smart-tv/scripts/smoke-webos22.cjs" \
+            "$PWD/chrome-linux/chrome" "$GITHUB_WORKSPACE/packages/smart-tv/out/webos"
+
+      - name: Release
+        if: steps.version.outputs.build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          UPSTREAM_TAG: ${{ steps.merge.outputs.upstream }}
+        run: |
+          ipk="aiostreams-webos-$VERSION.ipk"
+          sha256sum "$ipk" | cut -d' ' -f1 >"$ipk.sha256"
+          cat >notes.md <<EOF
+          AIOStreams for LG TVs from 2022 and newer (webOS 22+): the official [TV release $VERSION](https://github.com/Viren070/AIOStreams/releases/tag/$UPSTREAM_TAG) with the \`$BRANCH\` branch's changes merged in.
+
+          - Install: add \`$FEED\` as a repository in the Homebrew Channel, or install \`$ipk\` with webOS Dev Manager.
+          - Updates arrive through the Homebrew Channel.
+          EOF
+          gh release create "$TAG" "$ipk" "$ipk.sha256" \
+            --target "$BRANCH" \
+            --title "AIOStreams for webOS 22 – $VERSION" \
+            --notes-file notes.md --latest
+
+      - name: Update the Homebrew Channel repository
+        if: steps.version.outputs.build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          repo="https://github.com/${{ github.repository }}"
+          icon="https://raw.githubusercontent.com/${{ github.repository }}/$BRANCH/packages/smart-tv/webos/largeIcon.png"
+          id=$(jq -r .id packages/smart-tv/webos/appinfo.json)
+          ipk="aiostreams-webos-$VERSION.ipk"
+          mkdir feed
+          jq -n \
+            --arg id "$id" --arg version "$VERSION" --arg icon "$icon" --arg source "$repo" \
+            --arg ipk "$repo/releases/download/$TAG/$ipk" \
+            --arg sha256 "$(cut -d' ' -f1 "$ipk.sha256")" \
+            '{packages: [{
+              id: $id, title: "AIOStreams", iconUri: $icon,
+              shortDescription: "AIOStreams for LG TVs from 2022 and newer.",
+              manifest: {
+                id: $id, version: $version, type: "web", title: "AIOStreams",
+                iconUri: $icon, sourceUrl: $source, rootRequired: false,
+                ipkUrl: $ipk, ipkHash: {sha256: $sha256}
+              }
+            }]}' >feed/apps.json
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=%s/tree/%s#readme"><title>AIOStreams for webOS 22</title>\n' "$repo" "$BRANCH" >feed/index.html
+          touch feed/.nojekyll
+          cd feed
+          git init -q -b smart-tv-feed
+          git add -A
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -qm "AIOStreams $VERSION"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" HEAD:refs/heads/smart-tv-feed
