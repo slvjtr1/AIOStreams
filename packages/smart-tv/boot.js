@@ -4,7 +4,8 @@
   var agent = navigator.userAgent;
   var chrome = /Chrome\/(\d+)/.exec(agent);
   var tizen = /Tizen (\d+)/.exec(agent);
-  var old = chrome ? +chrome[1] < 94 : tizen ? +tizen[1] < 7 : false;
+  // webOS 22 (Chromium 87) and Tizen 7 are the oldest the app runs on.
+  var old = tizen ? +tizen[1] < 7 : chrome ? +chrome[1] < 87 : false;
   var BACK = [8, 27, 461, 10009];
   var overlay = null;
   var failure = null;
@@ -137,7 +138,9 @@
     document.addEventListener('DOMContentLoaded', function () {
       show(
         'This TV is too old for this app',
-        'The app needs a TV from 2023 or newer. It may still work here, with problems.',
+        'The app needs a TV from ' +
+          (tizen ? '2023' : '2022') +
+          ' or newer. It may still work here, with problems.',
         [
           [
             'Try anyway',

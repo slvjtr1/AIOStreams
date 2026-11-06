@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
+import { legacyCss } from './legacy-css.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const platform = process.argv[2];
@@ -71,11 +72,25 @@ function writeUnsigned(stage, file) {
   writeFileSync(file, zipSync(files));
 }
 
+// webOS 22's engine (Chromium 87) needs fallbacks for some of the CSS.
+function addLegacyCss(stage) {
+  const dir = join(stage, 'static/css');
+  for (const name of readdirSync(dir).filter((n) => n.endsWith('.css'))) {
+    const file = join(dir, name);
+    writeFileSync(file, legacyCss(readFileSync(file, 'utf8')).css);
+  }
+}
+
 if (platform === 'webos') {
-  const stage = stageApp('appinfo.json', (text) => {
-    const { id, ...rest } = JSON.parse(text);
-    return JSON.stringify({ id, version, ...rest }, null, 2);
-  });
+  const stage = stageApp(
+    'appinfo.json',
+    (text) => {
+      const { id, ...rest } = JSON.parse(text);
+      return JSON.stringify({ id, version, ...rest }, null, 2);
+    },
+    ['legacy.js']
+  );
+  addLegacyCss(stage);
   const cli = dirname(
     createRequire(import.meta.url).resolve('@webos-tools/cli/package.json')
   );

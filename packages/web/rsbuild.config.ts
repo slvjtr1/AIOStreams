@@ -85,6 +85,15 @@ const BUNDLED_ICONS = [
   'apple-icon.png',
 ].map((name) => ({ from: `../frontend/public/${name}`, to: name }));
 
+/** The standalone build's engines, down to the oldest TV it runs on. */
+const STANDALONE_TARGETS = [
+  'chrome >= 87',
+  'edge >= 94',
+  'firefox >= 115',
+  'safari >= 15.4',
+  'ios_saf >= 15.4',
+];
+
 /**
  * `--env-mode standalone` builds the app on its own, with a server list,
  * instead of the copy each server hosts at `/web`.
@@ -115,7 +124,8 @@ export default defineConfig(async ({ envMode }) => {
   if (standalone) {
     return {
       plugins: [pluginReact(), pluginLicenses()],
-      source,
+      // core-js must not be polyfilled with itself.
+      source: { ...source, exclude: [/[\\/]node_modules[\\/]core-js[\\/]/] },
       tools,
       html: {
         template: './index.html',
@@ -125,6 +135,10 @@ export default defineConfig(async ({ envMode }) => {
         distPath: { root: 'dist-standalone' },
         // Relative, since the TV apps load it from their package's files.
         assetPrefix: 'auto',
+        // LG's webOS 22 (2022) runs Chromium 87: lower the syntax to it and
+        // add what its engine lacks.
+        overrideBrowserslist: STANDALONE_TARGETS,
+        polyfill: 'usage',
         copy: BUNDLED_ICONS,
       },
       server: { port: devServerPort + 1 },
