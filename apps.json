@@ -1,0 +1,23 @@
+{
+  "packages": [
+    {
+      "id": "io.github.slvjtr1.aiostreams",
+      "title": "AIOStreams",
+      "iconUri": "https://raw.githubusercontent.com/slvjtr1/AIOStreams/webos22/packages/smart-tv/webos/largeIcon.png",
+      "shortDescription": "AIOStreams for LG TVs from 2022 and newer.",
+      "manifest": {
+        "id": "io.github.slvjtr1.aiostreams",
+        "version": "0.8.0",
+        "type": "web",
+        "title": "AIOStreams",
+        "iconUri": "https://raw.githubusercontent.com/slvjtr1/AIOStreams/webos22/packages/smart-tv/webos/largeIcon.png",
+        "sourceUrl": "https://github.com/slvjtr1/AIOStreams",
+        "rootRequired": false,
+        "ipkUrl": "https://github.com/slvjtr1/AIOStreams/releases/download/webos22-v0.8.0/aiostreams-webos-0.8.0.ipk",
+        "ipkHash": {
+          "sha256": "5babe98c5f62d27d80f6e49a95c0e2b3b061dad421ec81603ecbcb9b9fef1891"
+        }
+      }
+    }
+  ]
+}
